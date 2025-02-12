@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time Chat App</title>
+    <style>
+        .chat-container {
+            display: flex;
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .main-chat {
+            flex: 1;
+            margin-right: 20px;
+        }
+        #messages {
+            height: calc(100vh - 150px);
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.8em;
+        }
+        .private-message {
+            color: #ff4081;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #message-input {
+            flex: 1;
+            padding: 8px;
+        }
+        #send-button {
+            padding: 8px 20px;
+        }
+        .users-panel {
+            width: 200px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        .user-item {
+            cursor: pointer;
+            padding: 5px;
+        }
+        .user-item:hover {
+            background-color: #f0f0f0;
+        }
+        .message-type-selector {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        
+        .selected-recipient {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .user-item.selected {
+            background-color: #e0e0e0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="main-chat">
+            <div class="message-type-selector">
+                Sending to: <span class="selected-recipient">Everyone</span>
+                <button id="reset-recipient" style="float: right; padding: 2px 8px;">Reset to Everyone</button>
+            </div>
+            <div id="messages"></div>
+            <div class="input-container">
+                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off">
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+        <div class="users-panel">
+            <h3>Send Message To:</h3>
+            <div class="user-item" onclick="selectUser('everyone')" id="everyone-option">
+                Everyone (Public Chat)
+            </div>
+            <h3>Online Users:</h3>
+            <div id="users-list"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const usersList = document.getElementById('users-list');
+        let selectedUser = null;
+
+        const selectedRecipientSpan = document.querySelector('.selected-recipient');
+        const resetRecipientBtn = document.getElementById('reset-recipient');
+        const everyoneOption = document.getElementById('everyone-option');
+
+        function addMessage(data, isPrivate = false) {
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${isPrivate ? 'private-message' : ''}`;
+            messageElement.innerHTML = `
+                <strong>${data.username}:</strong> 
+                ${data.content}
+                <span class="timestamp">${data.timestamp}</span>
+            `;
+            messagesDiv.appendChild(messageElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateSelectedRecipient() {
+            selectedRecipientSpan.textContent = selectedUser ? selectedUser : 'Everyone';
+            messageInput.placeholder = selectedUser ? 
+                `Private message to ${selectedUser}` : 
+                'Type your message to everyone...';
+                
+            // Update visual selection
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            if (selectedUser) {
+                const userElement = Array.from(document.querySelectorAll('.user-item'))
+                    .find(el => el.textContent.trim() === selectedUser);
+                if (userElement) userElement.classList.add('selected');
+            } else {
+                everyoneOption.classList.add('selected');
+            }
+        }
+
+        function selectUser(username) {
+            if (username === 'everyone') {
+                selectedUser = null;
+            } else if (username === selectedUser) {
+                selectedUser = null;
+            } else {
+                selectedUser = username;
+            }
+            updateSelectedRecipient();
+        }
+
+        resetRecipientBtn.addEventListener('click', () => {
+            selectUser('everyone');
+        });
+
+        function updateUsersList(users) {
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                if (user !== '{{ username }}') {
+                    const userElement = document.createElement('div');
+                    userElement.className = 'user-item';
+                    userElement.textContent = user;
+                    userElement.onclick = () => selectUser(user);
+                    if (user === selectedUser) {
+                        userElement.classList.add('selected');
+                    }
+                    usersList.appendChild(userElement);
+                }
+            });
+        }
+
+        sendButton.addEventListener('click', () => {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('message', {
+                    message: message,
+                    recipient: selectedUser
+                });
+                messageInput.value = '';
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendButton.click();
+            }
+        });
+
+        socket.on('message', (data) => {
+            addMessage(data);
+        });
+
+        socket.on('private_message', (data) => {
+            addMessage(data, true);
+        });
+
+        socket.on('user_list', (users) => {
+            updateUsersList(users);
+        });
+    </script>
+</body>
+</html> 
